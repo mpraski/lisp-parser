@@ -37,6 +37,12 @@ satisfy f = consume >>= (\c -> if f c then return c else zero)
 digit :: Parser Char
 digit = satisfy (\c -> elem c ['0'..'9'])
 
+lower :: Parser Char
+lower = satisfy (\c -> elem c ['a'..'z'])
+
+upper :: Parser Char
+upper = satisfy (\c -> elem c ['A'..'Z'])
+
 whitespace :: Parser Char
 whitespace = satisfy (\c -> elem c [' ', '\n', '\t'])
 
