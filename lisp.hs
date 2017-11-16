@@ -61,8 +61,18 @@ whitespace = satisfy $ flip elem [' ', '\n', '\t']
 natural :: Parser Integer
 natural = read <$> some digit
 
+floating :: Parser Double
+floating = do
+    a <- some digit
+    b <- reserved "."
+    c <- some digit
+    return $ read $ a ++ b ++ c
+
+boolean :: Parser Bool
+boolean = read <$> capitalize <$> (reserved "true" <|> reserved "false")
+
 string :: String -> Parser String
-string [] = return []
+string []     = return []
 string (a:as) = do { char a; string as; return (a:as) }
 
 spaces :: Parser String
@@ -82,6 +92,10 @@ parens m = do
     return n
 
 -- Lisp object definitions
+capitalize :: String -> String
+capitalize (a:as) = toUpper a : map toLower as
+capitalize []     = []
+
 data Object =
     Integral Int
     | Boolean Bool
