@@ -7,7 +7,7 @@ import Control.Applicative
 newtype Parser a = Parser { parse :: String -> Maybe (a, String) }
 
 instance Functor Parser where
-    fmap f p = Parser $ \s -> case parse p s of
+    f `fmap` p = Parser $ \s -> case parse p s of
                                  Nothing      -> Nothing
                                  Just (a, s') -> Just (f a, s')
 
@@ -43,6 +43,9 @@ consume  = Parser $ \s -> case s of
 satisfy :: (Char -> Bool) -> Parser Char
 satisfy f = consume >>= (\c -> if f c then return c else empty)
 
+char :: Char -> Parser Char
+char c = satisfy (c==)
+
 digit :: Parser Char
 digit = satisfy $ flip elem ['0'..'9']
 
@@ -54,6 +57,29 @@ upper = satisfy $ flip elem ['A'..'Z']
 
 whitespace :: Parser Char
 whitespace = satisfy $ flip elem [' ', '\n', '\t']
+
+natural :: Parser Integer
+natural = read <$> some digit
+
+string :: String -> Parser String
+string [] = return []
+string (a:as) = do { char a; string as; return (a:as) }
+
+spaces :: Parser String
+spaces = many $ whitespace
+
+token :: Parser a -> Parser a
+token p = do {a <- p; spaces; return a}
+
+reserved :: String -> Parser String
+reserved s = token (string s)
+
+parens :: Parser a -> Parser a
+parens m = do
+    reserved "("
+    n <- m
+    reserved ")"
+    return n
 
 -- Lisp object definitions
 data Object =
