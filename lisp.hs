@@ -1,5 +1,4 @@
 import Data.Char
-import Data.Monoid
 import Control.Monad
 import Control.Applicative
 
@@ -7,38 +6,49 @@ import Control.Applicative
 newtype Parser a = Parser { parse :: String -> Maybe (a, String) }
 
 instance Functor Parser where
-    f `fmap` p = Parser $ \s -> case parse p s of
-                                 Nothing      -> Nothing
-                                 Just (a, s') -> Just (f a, s')
+    f `fmap` p = Parser $ \s ->
+        case parse p s of
+            Nothing      -> Nothing
+            Just (a, s') -> Just (f a, s')
 
 instance Applicative Parser where
     pure a  = Parser $ \s -> Just (a, s)
-    f <*> p = Parser $ \s -> case parse f s of
-                                Nothing      -> Nothing
-                                Just (g, s') -> case parse p s' of
-                                                   Nothing       -> Nothing
-                                                   Just (a, s'') -> Just (g a, s'')
+    f <*> p = Parser $ \s ->
+        case parse f s of
+            Nothing      -> Nothing
+            Just (g, s') ->
+                case parse p s' of
+                    Nothing       -> Nothing
+                    Just (a, s'') -> Just (g a, s'')
 
 instance Monad Parser where
     return = pure
-    p >>= f  = Parser $ \s -> case parse p s of
-                                Nothing      -> Nothing
-                                Just (a, s') -> parse (f a) s'
+    p >>= f  = Parser $ \s ->
+        case parse p s of
+            Nothing      -> Nothing
+            Just (a, s') -> parse (f a) s'
 
 instance MonadPlus Parser where
     mzero       = Parser $ \s -> Nothing
-    a `mplus` b = Parser $ \s -> case parse a s of
-                                    Nothing      -> parse b s
-                                    Just (c, s') -> Just (c, s')
+    a `mplus` b = Parser $ \s ->
+        case parse a s of
+            Nothing      -> parse b s
+            Just (c, s') -> Just (c, s')
 
 instance Alternative Parser where
     empty = mzero
     (<|>) = mplus
 
+run :: Parser a -> String -> a
+run p s = case parse p s of
+             Just(a, s') -> a
+             Nothing     -> error "Parser did not succeed"
+
 consume :: Parser Char
-consume  = Parser $ \s -> case s of
-                             []     -> Nothing
-                             (a:as) -> Just (a, as)
+consume  = Parser $ \s ->
+    case s of
+        []     -> Nothing
+        (a:as) -> Just (a, as)
 
 satisfy :: (Char -> Bool) -> Parser Char
 satisfy f = consume >>= (\c -> if f c then return c else empty)
@@ -46,59 +56,100 @@ satisfy f = consume >>= (\c -> if f c then return c else empty)
 char :: Char -> Parser Char
 char c = satisfy (c==)
 
+chars :: [Char] -> Parser Char
+chars cs = satisfy $ flip elem cs
+
 digit :: Parser Char
-digit = satisfy $ flip elem ['0'..'9']
+digit = chars ['0'..'9']
 
 lower :: Parser Char
-lower = satisfy $ flip elem ['a'..'z']
+lower = chars ['a'..'z']
 
 upper :: Parser Char
-upper = satisfy $ flip elem ['A'..'Z']
+upper = chars ['A'..'Z']
+
+allowed :: Parser Char
+allowed = chars $ ['a'..'z'] ++ ['A'..'Z']
 
 whitespace :: Parser Char
-whitespace = satisfy $ flip elem [' ', '\n', '\t']
+whitespace = chars [' ', '\n', '\t']
 
-natural :: Parser Integer
-natural = read <$> some digit
+integral :: Parser Integer
+integral = do
+    s <- string "-" <|> return ""
+    a <- some digit
+    return $ read $ s ++ a
 
 floating :: Parser Double
 floating = do
-    a <- some digit
+    s <- string "-" <|> return ""
+    a <- some digit <|> return "0"
     b <- reserved "."
     c <- some digit
-    return $ read $ a ++ b ++ c
+    return $ read $ s ++ a ++ b ++ c
 
 boolean :: Parser Bool
-boolean = read <$> capitalize <$> (reserved "true" <|> reserved "false")
+boolean = do
+    a <- reserved "true" <|> reserved "false"
+    return $
+        case a of
+            "true"  -> True
+            "false" -> False
+
 
 string :: String -> Parser String
 string []     = return []
 string (a:as) = do { char a; string as; return (a:as) }
 
+anyString :: Parser String
+anyString = token (some allowed)
+
 spaces :: Parser String
 spaces = many $ whitespace
 
 token :: Parser a -> Parser a
-token p = do {a <- p; spaces; return a}
+token p = do { a <- p; spaces; return a }
 
 reserved :: String -> Parser String
 reserved s = token (string s)
 
-parens :: Parser a -> Parser a
-parens m = do
-    reserved "("
-    n <- m
-    reserved ")"
-    return n
-
--- Lisp object definitions
-capitalize :: String -> String
-capitalize (a:as) = toUpper a : map toLower as
-capitalize []     = []
-
-data Object =
-    Integral Int
+-- Lisp specific definitions
+data LispObject =
+    Integral Integer
+    | Floating Double
     | Boolean Bool
     | Symbol String
-    | Pair Object Object
+    | Pair LispObject LispObject
     | Nil deriving (Eq, Show)
+
+lispObject :: Parser LispObject
+lispObject = lispFloating
+    <|> lispIntegral
+    <|> lispBoolean
+    <|> lispNil
+    <|> lispSymbol
+    <|> lispList
+
+lispIntegral :: Parser LispObject
+lispIntegral = do { a <- integral; return (Integral a)}
+
+lispFloating :: Parser LispObject
+lispFloating = do { a <- floating; return (Floating a)}
+
+lispSymbol :: Parser LispObject
+lispSymbol = do { a <- anyString; return (Symbol a)}
+
+lispBoolean :: Parser LispObject
+lispBoolean = do { a <- boolean; return (Boolean a)}
+
+lispNil :: Parser LispObject
+lispNil = do { reserved "nil"; return Nil}
+
+lispList :: Parser LispObject
+lispList = do
+    reserved "("
+    a <- lispObject
+    spaces
+    b <- lispObject
+    reserved ")"
+    return (Pair a b)
