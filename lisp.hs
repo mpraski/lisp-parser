@@ -40,9 +40,10 @@ instance Alternative Parser where
     (<|>) = mplus
 
 run :: Parser a -> String -> a
-run p s = case parse p s of
-             Just(a, s') -> a
-             Nothing     -> error "Parser did not succeed"
+run p s =
+    case parse p s of
+        Just (a, _) -> a
+        Nothing     -> error "Parser did not succeed"
 
 consume :: Parser Char
 consume  = Parser $ \s ->
@@ -68,8 +69,8 @@ lower = chars ['a'..'z']
 upper :: Parser Char
 upper = chars ['A'..'Z']
 
-allowed :: Parser Char
-allowed = chars $ ['a'..'z'] ++ ['A'..'Z']
+symbol :: Parser Char
+symbol = chars $ ['a'..'z'] ++ ['A'..'Z'] ++ ['*','/','>','<','=','?','!','-','+']
 
 whitespace :: Parser Char
 whitespace = chars [' ', '\n', '\t']
@@ -96,16 +97,12 @@ boolean = do
             "true"  -> True
             "false" -> False
 
-
 string :: String -> Parser String
 string []     = return []
 string (a:as) = do { char a; string as; return (a:as) }
 
-anyString :: Parser String
-anyString = token (some allowed)
-
 spaces :: Parser String
-spaces = many $ whitespace
+spaces = many whitespace
 
 token :: Parser a -> Parser a
 token p = do { a <- p; spaces; return a }
@@ -119,7 +116,8 @@ data LispObject =
     | Floating Double
     | Boolean Bool
     | Symbol String
-    | Pair LispObject LispObject
+    | Reserved String
+    | List [LispObject]
     | Nil deriving (Eq, Show)
 
 lispObject :: Parser LispObject
@@ -127,29 +125,48 @@ lispObject = lispFloating
     <|> lispIntegral
     <|> lispBoolean
     <|> lispNil
-    <|> lispSymbol
     <|> lispList
+    <|> lispReserved
+    <|> lispSymbol
 
 lispIntegral :: Parser LispObject
-lispIntegral = do { a <- integral; return (Integral a)}
+lispIntegral = do { a <- integral; spaces; return $ Integral a }
 
 lispFloating :: Parser LispObject
-lispFloating = do { a <- floating; return (Floating a)}
+lispFloating = do { a <- floating; spaces; return $ Floating a }
+
+lispReserved :: Parser LispObject
+lispReserved = do
+    a <- string "if"
+        <|> string "then"
+        <|> string "else"
+        <|> string "elif"
+        <|> string "fi"
+        <|> string "do"
+        <|> string "done"
+        <|> string "case"
+        <|> string "esac"
+        <|> string "while"
+        <|> string "until"
+        <|> string "for"
+        <|> string "in"
+    spaces
+    return $ Reserved a
 
 lispSymbol :: Parser LispObject
-lispSymbol = do { a <- anyString; return (Symbol a)}
+lispSymbol = do { a <- token (some symbol); return $ Symbol a }
 
 lispBoolean :: Parser LispObject
-lispBoolean = do { a <- boolean; return (Boolean a)}
+lispBoolean = do { a <- boolean; spaces; return $ Boolean a }
 
 lispNil :: Parser LispObject
-lispNil = do { reserved "nil"; return Nil}
+lispNil = do { reserved "nil"; return Nil }
 
 lispList :: Parser LispObject
 lispList = do
     reserved "("
-    a <- lispObject
-    spaces
-    b <- lispObject
+    a <- many lispObject
     reserved ")"
-    return (Pair a b)
+    return $ List a
+
+type LispEnvironment = [(String, LispObject)]
