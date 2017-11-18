@@ -137,20 +137,19 @@ lispFloating = do { a <- floating; spaces; return $ Floating a }
 
 lispReserved :: Parser LispObject
 lispReserved = do
-    a <- string "if"
-        <|> string "then"
-        <|> string "else"
-        <|> string "elif"
-        <|> string "fi"
-        <|> string "do"
-        <|> string "done"
-        <|> string "case"
-        <|> string "esac"
-        <|> string "while"
-        <|> string "until"
-        <|> string "for"
-        <|> string "in"
-    spaces
+    a <- reserved "if"
+        <|> reserved "then"
+        <|> reserved "else"
+        <|> reserved "elif"
+        <|> reserved "fi"
+        <|> reserved "do"
+        <|> reserved "done"
+        <|> reserved "case"
+        <|> reserved "esac"
+        <|> reserved "while"
+        <|> reserved "until"
+        <|> reserved "for"
+        <|> reserved "in"
     return $ Reserved a
 
 lispSymbol :: Parser LispObject
@@ -170,3 +169,7 @@ lispList = do
     return $ List a
 
 type LispEnvironment = [(String, LispObject)]
+
+bind :: (String, LispObject) -> LispEnvironment -> LispEnvironment
+bind (s, o) ((s', o') : e) = if s == s' then (s, o) : e else (s', o') : (bind (s, o) e)
+bind (s, o) []             = [(s, o)]
