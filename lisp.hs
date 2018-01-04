@@ -127,6 +127,11 @@ data LispObject =
 	| List [LispObject]
 	| Primitive Name LispFunc
 	| Quote Value
+	| Closure {
+		cargs :: [Name],
+		cbody :: Expr,
+		cenv  :: LispEnvironment
+	}
 	| Nil
 
 type Value = LispObject
@@ -139,12 +144,17 @@ data Expr =
 	| Or Expr Expr
 	| Apply Expr [Expr]
 	| ApplyOne Expr Expr
+	| Lambda {
+		largs :: [Name],
+		lbody :: Expr
+	}
 	| DefVal Name Expr
 	| DefExpr Expr deriving (Eq, Show)
 
 data LispError =
 	Default String
 	| UnboundVar String Name
+	| ReservedVar String Name
 	| BadExpr String deriving (Eq, Show)
 
 type ThrowsError = Either LispError
@@ -167,6 +177,7 @@ instance Eq LispObject where
 	Symbol a      == Symbol b      = a == b
 	List a        == List b        = a == b
 	Primitive a _ == Primitive b _ = a == b
+	Closure a b _ == Closure c d _ = a == c && b == d
 	Nil           == Nil           = True
 	_			  == _			   = False
 
@@ -187,6 +198,7 @@ instance Show LispObject where
 	show (Quote a)    	 = "Quote " ++ show a
 	show (List a)        = "List " ++ show a
 	show (Primitive a f) = "Primitive " ++ show a
+	show (Closure a _ _) = "Closure " ++ show a
 	show Nil             = "Nil"
 
 lispObject :: Parser LispObject
@@ -238,42 +250,47 @@ isBound e n = readIORef e >>= return . maybe False (const True) . lookup n
 getVar :: LispEnvironment -> Name -> IOThrowsError LispObject
 getVar e n  =  do
 	env <- liftIO $ readIORef e
-	maybe (throwError $ UnboundVar "Getting an unbound variable" n)
+	maybe (throwError $ UnboundVar "Variable not bound" n)
 		(liftIO . readIORef)
 		(lookup n env)
 
 bindVar :: LispEnvironment -> (Name, LispObject) -> IOThrowsError LispObject
 bindVar envRef (var, value) = do
-     alreadyDefined <- liftIO $ isBound envRef var
-     liftIO $ if alreadyDefined
-        then do
-        	env <- readIORef envRef
-        	maybe (return ()) (liftIO . (flip writeIORef value)) (lookup var env)
-        	return value
- 		else liftIO $ do
-             valueRef <- newIORef value
-             env <- readIORef envRef
-             writeIORef envRef ((var, valueRef) : env)
-             return value
+	aPrim <- liftIO $ isStdPrim var
+	if aPrim
+		then throwError $ ReservedVar "Cannot bind to primitive" var
+		else do
+		    alreadyDefined <- liftIO $ isBound envRef var
+		    liftIO $ if alreadyDefined
+		        then do
+		        	env <- readIORef envRef
+		        	maybe (return ()) (liftIO . (flip writeIORef value)) (lookup var env)
+		        	return value
+		 		else liftIO $ do
+		             valueRef <- newIORef value
+		             env <- readIORef envRef
+		             writeIORef envRef ((var, valueRef) : env)
+		             return value
 
 bindVars :: LispEnvironment -> [(Name, LispObject)] -> IO LispEnvironment
 bindVars envRef bindings = readIORef envRef >>= extendEnv bindings >>= newIORef
-     where extendEnv bindings env = liftM (++ env) (mapM addBinding bindings)
-           addBinding (var, value) = do ref <- newIORef value
-                                        return (var, ref)
+     where
+     	extendEnv bindings env = liftM (++ env) (mapM addBinding bindings)
+        addBinding (var, value) = do { ref <- newIORef value; return (var, ref) }
 
 envToList :: LispEnvironment -> IO LispObject
 envToList e = readIORef e >>= toList
 	where
-		toList env = (mapM flatten env) >>= (\xs -> return $ List xs)
+		toList env = (mapM flatten env) >>= (return . List)
 		flatten (var, value) = do
 			ref <- readIORef value;
 			return $ List [Symbol var, ref]
 
-basis :: IO LispEnvironment
-basis = emptyEnv >>= (flip bindVars decl)
-	where
-		decl = map (\(n, f) -> (n, Primitive n f)) [
+isStdPrim :: Name -> IO Bool
+isStdPrim n = return . maybe False (const True) $ lookup n stdPrims
+
+stdPrims :: [(Name, LispObject)]
+stdPrims = map (\(n, f) -> (n, Primitive n f)) [
 			("eq", equals),
 			("neq", not_equals),
 			("+", plus),
@@ -281,7 +298,9 @@ basis = emptyEnv >>= (flip bindVars decl)
 			("*", times),
 			("/", divides),
 			("<", lower_than),
-			(">", greater_than)]
+			(">", greater_than)
+		]
+	where
 		plus l = case l of
 			[Integral a, Integral b] -> Integral (a+b)
 			[Floating a, Floating b] -> Floating (a+b)
@@ -325,28 +344,38 @@ basis = emptyEnv >>= (flip bindVars decl)
 			[Quote a, Quote b] 		 -> Boolean $ a > b
 			_                        -> error "(lower_than obj obj)"
 
+basis :: IO LispEnvironment
+basis = emptyEnv >>= (flip bindVars stdPrims)
+
 -- build and evaluate AST
 buildExpr :: LispObject -> Expr
 buildExpr (Primitive n f) = error "Not expected"
+buildExpr (Closure a b e) = error "Not expected"
 buildExpr (Integral i)    = Literal (Integral i)
 buildExpr (Floating f)    = Literal (Floating f)
 buildExpr (Boolean b)     = Literal (Boolean b)
 buildExpr (Quote q)		  = Literal (Quote q)
 buildExpr Nil			  = Literal Nil
 buildExpr (Symbol s)      = Var s
-buildExpr (List l)	      = case l of
-	[Symbol "if", c, t, f]            -> If (buildExpr c) (buildExpr t) (buildExpr f)
-	[Symbol "and", a, b]		      -> And (buildExpr a) (buildExpr b)
-	[Symbol "or", a, b]		    	  -> Or (buildExpr a) (buildExpr b)
-	[Symbol "def", Symbol s, o] 	  -> DefVal s (buildExpr o)
-	[Symbol "apply", Symbol fn, args] -> ApplyOne (buildExpr $ Symbol fn) (buildExpr args)
-	(Symbol fn):args	   			  -> Apply (buildExpr $ Symbol fn) (buildExpr <$> args)
-	[]								  -> Literal $ List []
-	_								  -> error "Poorly formed expression"
+buildExpr (List l)	      =
+	case l of
+		[Symbol "if", c, t, f]             -> If (buildExpr c) (buildExpr t) (buildExpr f)
+		[Symbol "and", a, b]		       -> And (buildExpr a) (buildExpr b)
+		[Symbol "or", a, b]		    	   -> Or (buildExpr a) (buildExpr b)
+		[Symbol "val", Symbol s, o] 	   -> DefVal s (buildExpr o)
+		[Symbol "lambda", List args, body] -> Lambda { largs=(map get_args args), lbody=(buildExpr body) }
+		[Symbol "apply", Symbol fn, args]  -> ApplyOne (buildExpr $ Symbol fn) (buildExpr args)
+		(Symbol fn):args	   			   -> Apply (buildExpr $ Symbol fn) (buildExpr <$> args)
+		[]								   -> Literal $ List []
+		_								   -> error "Poorly formed expression"
+	where get_args a = case a of
+		Symbol s -> s
+		_		 -> error "(lambda (args) body)"
 
 evalExpr :: Expr -> LispEnvironment -> IOThrowsError LispObject
 evalExpr (Literal (Quote q)) e = return q
 evalExpr (Literal l) e = return l
+evalExpr (Lambda a b) e = return $ Closure { cargs=a, cbody=b, cenv=e }
 evalExpr (Var "env") e = liftIO $ envToList e
 evalExpr (Var n) e = getVar e n
 evalExpr (If b t f) e = do
@@ -370,6 +399,7 @@ evalExpr (Apply fn args) e = do
 	as <- mapM (flip evalExpr e) args
 	case f of
 		Primitive _ f -> return $ f as
+		Closure c b e -> (liftIO $ bindVars e $ zip c as) >>= (evalExpr b)
 		_			  -> throwError $ BadExpr "(apply func args)"
 
 evalExpr (ApplyOne fn args) e = do
@@ -378,6 +408,8 @@ evalExpr (ApplyOne fn args) e = do
 	case (f, as) of
 		(Primitive _ f, List ass) -> return $ f ass
 		(Primitive _ f, o) 		  -> return $ f [o]
+		(Closure c b e, List ass) -> (liftIO $ bindVars e $ zip c ass) >>= (evalExpr b)
+		(Closure c b e, o) 		  -> (liftIO $ bindVars e $ zip c [o]) >>= (evalExpr b)
 		_			  			  -> throwError $ BadExpr "(apply func args)"
 
 evalExpr (DefVal n v) e = do
