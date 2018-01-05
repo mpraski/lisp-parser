@@ -149,6 +149,7 @@ data Expr =
 		lbody :: Expr
 	}
 	| DefVal Name Expr
+	| DefFun Name [Name] Expr
 	| DefExpr Expr deriving (Eq, Show)
 
 data LispError =
@@ -335,14 +336,14 @@ stdPrims = map (\(n, f) -> (n, Primitive n f)) [
 			[Symbol a, Symbol b] 	 -> Boolean $ a < b
 			[List a, List b] 		 -> Boolean $ a < b
 			[Quote a, Quote b] 		 -> Boolean $ a < b
-			_                        -> error "(lower_than obj obj)"
+			_                        -> error "(lower_than ord ord)"
 		greater_than l = case l of
 			[Integral a, Integral b] -> Boolean $ a > b
 			[Floating a, Floating b] -> Boolean $ a > b
 			[Symbol a, Symbol b] 	 -> Boolean $ a > b
 			[List a, List b] 		 -> Boolean $ a > b
 			[Quote a, Quote b] 		 -> Boolean $ a > b
-			_                        -> error "(lower_than obj obj)"
+			_                        -> error "(lower_than ord ord)"
 
 basis :: IO LispEnvironment
 basis = emptyEnv >>= (flip bindVars stdPrims)
@@ -359,15 +360,16 @@ buildExpr Nil			  = Literal Nil
 buildExpr (Symbol s)      = Var s
 buildExpr (List l)	      =
 	case l of
-		[Symbol "if", c, t, f]             -> If (buildExpr c) (buildExpr t) (buildExpr f)
-		[Symbol "and", a, b]		       -> And (buildExpr a) (buildExpr b)
-		[Symbol "or", a, b]		    	   -> Or (buildExpr a) (buildExpr b)
-		[Symbol "val", Symbol s, o] 	   -> DefVal s (buildExpr o)
-		[Symbol "lambda", List args, body] -> Lambda { largs=(map get_args args), lbody=(buildExpr body) }
-		[Symbol "apply", Symbol fn, args]  -> ApplyOne (buildExpr $ Symbol fn) (buildExpr args)
-		(Symbol fn):args	   			   -> Apply (buildExpr $ Symbol fn) (buildExpr <$> args)
-		[]								   -> Literal $ List []
-		_								   -> error "Poorly formed expression"
+		[Symbol "if", c, t, f]             			 -> If (buildExpr c) (buildExpr t) (buildExpr f)
+		[Symbol "and", a, b]		       			 -> And (buildExpr a) (buildExpr b)
+		[Symbol "or", a, b]		    	   			 -> Or (buildExpr a) (buildExpr b)
+		[Symbol "val", Symbol s, o] 	   			 -> DefVal s (buildExpr o)
+		[Symbol "lambda", List args, body] 			 -> Lambda { largs=(map get_args args), lbody=(buildExpr body) }
+		[Symbol "define", Symbol n, List args, body] -> DefFun n (map get_args args) (buildExpr body)
+		[Symbol "apply", Symbol fn, args]  		     -> ApplyOne (buildExpr $ Symbol fn) (buildExpr args)
+		(Symbol fn):args	   			   			 -> Apply (buildExpr $ Symbol fn) (buildExpr <$> args)
+		[]								   			 -> Literal $ List []
+		_								   			 -> error "Poorly formed expression"
 	where get_args a = case a of
 		Symbol s -> s
 		_		 -> error "(lambda (args) body)"
@@ -412,10 +414,17 @@ evalExpr (ApplyOne fn args) e = do
 		(Closure c b e, o) 		  -> (liftIO $ bindVars e $ zip c [o]) >>= (evalExpr b)
 		_			  			  -> throwError $ BadExpr "(apply func args)"
 
-evalExpr (DefVal n v) e = do
-	va <- evalExpr v e
-	bindVar e (n, va)
-	return va
+evalExpr (DefVal n v) e = (evalExpr v e) >>= (\va -> bindVar e (n, va))
+
+evalExpr (DefFun n args body) e = do
+	ev <- evalExpr (Lambda args body) e
+	case ev of
+		Closure a b env -> do
+			bindVar env (n, Nil)
+			clo <- liftIO . return $ Closure a b env
+			bindVar e (n, clo)
+			return clo
+		_				-> throwError $ BadExpr "Expecting closure"
 
 evalExpr (DefExpr v) e = evalExpr v e
 
