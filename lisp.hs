@@ -144,10 +144,7 @@ data Expr =
 	| Or Expr Expr
 	| Apply Expr [Expr]
 	| ApplyOne Expr Expr
-	| Lambda {
-		largs :: [Name],
-		lbody :: Expr
-	}
+	| Lambda [Name] Expr
 	| DefVal Name Expr
 	| DefFun Name [Name] Expr
 	| DefExpr Expr deriving (Eq, Show)
@@ -280,12 +277,8 @@ bindVars envRef bindings = readIORef envRef >>= extendEnv bindings >>= newIORef
         addBinding (var, value) = do { ref <- newIORef value; return (var, ref) }
 
 envToList :: LispEnvironment -> IO LispObject
-envToList e = readIORef e >>= toList
-	where
-		toList env = (mapM flatten env) >>= (return . List)
-		flatten (var, value) = do
-			ref <- readIORef value;
-			return $ List [Symbol var, ref]
+envToList e = readIORef e >>= mapM g >>= return . List
+	where g (v, k) = do { ref <- readIORef k; return $ List [Symbol v, ref] }
 
 isStdPrim :: Name -> IO Bool
 isStdPrim n = return . maybe False (const True) $ lookup n stdPrims
@@ -307,25 +300,25 @@ stdPrims = map (\(n, f) -> (n, Primitive n f)) [
 			[Floating a, Floating b] -> Floating (a+b)
 			[Floating a, Integral b] -> Floating (a+(fromIntegral b))
 			[Integral a, Floating b] -> Floating ((fromIntegral a)+b)
-			_                            -> error "(plus a b)"
+			_                        -> error "(plus a b)"
 		minus l = case l of
 			[Integral a, Integral b] -> Integral (a-b)
 			[Floating a, Floating b] -> Floating (a-b)
 			[Floating a, Integral b] -> Floating (a-(fromIntegral b))
 			[Integral a, Floating b] -> Floating ((fromIntegral a)-b)
-			_                            -> error "(minus a b)"
+			_                        -> error "(minus a b)"
 		times l = case l of
 			[Integral a, Integral b] -> Integral (a*b)
 			[Floating a, Floating b] -> Floating (a*b)
 			[Floating a, Integral b] -> Floating (a*(fromIntegral b))
 			[Integral a, Floating b] -> Floating ((fromIntegral a)*b)
-			_                            -> error "(times a b)"
+			_                        -> error "(times a b)"
 		divides l = case l of
 			[Integral a, Integral b] -> Integral (quot a b)
 			[Floating a, Floating b] -> Floating (a/b)
 			[Floating a, Integral b] -> Floating (a/(fromIntegral b))
 			[Integral a, Floating b] -> Floating ((fromIntegral a)/b)
-			_                            -> error "(divides a b)"
+			_                        -> error "(divides a b)"
 		equals l = case l of
 			[a, b] -> Boolean $ a == b
 		not_equals l = case l of
@@ -360,13 +353,13 @@ buildExpr Nil			  = Literal Nil
 buildExpr (Symbol s)      = Var s
 buildExpr (List l)	      =
 	case l of
-		[Symbol "if", c, t, f]             			 -> If (buildExpr c) (buildExpr t) (buildExpr f)
-		[Symbol "and", a, b]		       			 -> And (buildExpr a) (buildExpr b)
-		[Symbol "or", a, b]		    	   			 -> Or (buildExpr a) (buildExpr b)
-		[Symbol "val", Symbol s, o] 	   			 -> DefVal s (buildExpr o)
-		[Symbol "lambda", List args, body] 			 -> Lambda { largs=(map get_args args), lbody=(buildExpr body) }
+		[Symbol "if", 	  c, t, f]         			 -> If (buildExpr c) (buildExpr t) (buildExpr f)
+		[Symbol "and", 	  a, b]		       			 -> And (buildExpr a) (buildExpr b)
+		[Symbol "or", 	  a, b]		    	   		 -> Or (buildExpr a) (buildExpr b)
+		[Symbol "val",    Symbol s, o] 	   			 -> DefVal s (buildExpr o)
+		[Symbol "lambda", List args, body] 			 -> Lambda (map get_args args) (buildExpr body)
 		[Symbol "define", Symbol n, List args, body] -> DefFun n (map get_args args) (buildExpr body)
-		[Symbol "apply", Symbol fn, args]  		     -> ApplyOne (buildExpr $ Symbol fn) (buildExpr args)
+		[Symbol "apply",  Symbol fn, args]  	     -> ApplyOne (buildExpr $ Symbol fn) (buildExpr args)
 		(Symbol fn):args	   			   			 -> Apply (buildExpr $ Symbol fn) (buildExpr <$> args)
 		[]								   			 -> Literal $ List []
 		_								   			 -> error "Poorly formed expression"
@@ -410,11 +403,11 @@ evalExpr (ApplyOne fn args) e = do
 	case (f, as) of
 		(Primitive _ f, List ass) -> return $ f ass
 		(Primitive _ f, o) 		  -> return $ f [o]
-		(Closure c b e, List ass) -> (liftIO $ bindVars e $ zip c ass) >>= (evalExpr b)
-		(Closure c b e, o) 		  -> (liftIO $ bindVars e $ zip c [o]) >>= (evalExpr b)
+		(Closure c b e, List ass) -> (liftIO $ bindVars e $ zip c ass) >>= evalExpr b
+		(Closure c b e, o) 		  -> (liftIO $ bindVars e $ zip c [o]) >>= evalExpr b
 		_			  			  -> throwError $ BadExpr "(apply func args)"
 
-evalExpr (DefVal n v) e = (evalExpr v e) >>= (\va -> bindVar e (n, va))
+evalExpr (DefVal n v) e = evalExpr v e >>= (\va -> bindVar e (n, va))
 
 evalExpr (DefFun n args body) e = do
 	ev <- evalExpr (Lambda args body) e
@@ -430,12 +423,10 @@ evalExpr (DefExpr v) e = evalExpr v e
 
 -- Define the repl function
 repl :: IO ()
-repl = do
-	hSetBuffering stdin LineBuffering
-	runRepl
+repl = hSetBuffering stdin LineBuffering >> runRepl
 
 runRepl :: IO ()
-runRepl = basis >>= until_ (== "quit") (readPrompt "> ") . evalAndPrint
+runRepl = basis >>= until_ (== ":q") (readPrompt "> ") . evalAndPrint
 
 until_ :: Monad m => (a -> Bool) -> m a -> (a -> m ()) -> m ()
 until_ pred prompt action = do
