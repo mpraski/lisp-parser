@@ -258,23 +258,27 @@ bindVar envRef (var, value) = do
 	if aPrim
 		then throwError $ ReservedVar "Cannot bind to primitive" var
 		else do
-		    alreadyDefined <- liftIO $ isBound envRef var
-		    liftIO $ if alreadyDefined
-		        then do
-		        	env <- readIORef envRef
-		        	maybe (return ()) (liftIO . (flip writeIORef value)) (lookup var env)
-		        	return value
-		 		else liftIO $ do
-		             valueRef <- newIORef value
-		             env <- readIORef envRef
-		             writeIORef envRef ((var, valueRef) : env)
-		             return value
+			alreadyDefined <- liftIO $ isBound envRef var
+			liftIO $ if alreadyDefined
+				then do
+					env <- readIORef envRef
+					maybe (return ()) (liftIO . (flip writeIORef value)) (lookup var env)
+					return value
+				else liftIO $ do
+					valueRef <- newIORef value
+					env <- readIORef envRef
+					writeIORef envRef ((var, valueRef) : env)
+					return value
 
 bindVars :: LispEnvironment -> [(Name, LispObject)] -> IO LispEnvironment
 bindVars envRef bindings = readIORef envRef >>= extendEnv bindings >>= newIORef
-     where
-     	extendEnv bindings env = liftM (++ env) (mapM addBinding bindings)
-        addBinding (var, value) = do { ref <- newIORef value; return (var, ref) }
+	where
+		extendEnv bindings env = liftM (++ env) (mapM addBinding bindings)
+		addBinding (var, value) = do { ref <- newIORef value; return (var, ref) }
+
+copyEnv :: LispEnvironment -> IO LispEnvironment
+copyEnv e = readIORef e >>= mapM g >>= newIORef
+	where g (var, ref) = readIORef ref >>= newIORef >>= (\v -> return (var, v))
 
 envToList :: LispEnvironment -> IO LispObject
 envToList e = readIORef e >>= mapM g >>= return . List
@@ -413,8 +417,8 @@ evalExpr (DefFun n args body) e = do
 	ev <- evalExpr (Lambda args body) e
 	case ev of
 		Closure a b env -> do
-			bindVar env (n, Nil)
-			clo <- liftIO . return $ Closure a b env
+			newEnv <- liftIO $ copyEnv env
+			clo <- liftIO . return $ Closure a b newEnv
 			bindVar e (n, clo)
 			return clo
 		_				-> throwError $ BadExpr "Expecting closure"
