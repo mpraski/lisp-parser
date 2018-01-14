@@ -1,11 +1,12 @@
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
-import Data.Char
-import Data.IORef
-import Control.Monad
-import Control.Applicative
-import Control.Monad.Except
-import System.IO
+import           Control.Applicative
+import           Control.Monad
+import           Control.Monad.Except
+import           Data.Char
+import           Data.IORef
+import 			 Data.Maybe
+import           System.IO
 
 -- Parser definitions
 newtype Parser a = Parser { parse :: String -> Maybe (a, String) }
@@ -48,7 +49,7 @@ run :: Parser a -> String -> a
 run p s =
 	case parse p s of
 		Just (a, _) -> a
-		Nothing     -> error "Parser did not succeed"
+		Nothing     -> error "    Parser did not succeed"
 
 consume :: Parser Char
 consume  = Parser $ \s ->
@@ -62,7 +63,7 @@ satisfy f = consume >>= (\c -> if f c then return c else empty)
 char :: Char -> Parser Char
 char c = satisfy (c==)
 
-chars :: [Char] -> Parser Char
+chars :: String -> Parser Char
 chars cs = satisfy $ flip elem cs
 
 digit :: Parser Char
@@ -165,7 +166,7 @@ extractValue :: ThrowsError a -> a
 extractValue (Right val) = val
 
 liftThrows :: ThrowsError a -> IOThrowsError a
-liftThrows (Left err) = throwError err
+liftThrows (Left err)  = throwError err
 liftThrows (Right val) = return val
 
 instance Eq LispObject where
@@ -189,15 +190,15 @@ instance Ord LispObject where
 	Nil           `compare` Nil           = EQ
 
 instance Show LispObject where
-	show (Integral a)    = "Integral " ++ show a
-	show (Floating a)    = "Floating " ++ show a
-	show (Boolean a)     = "Boolean " ++ show a
-	show (Symbol a)      = "Symbol " ++ show a
-	show (Quote a)    	 = "Quote " ++ show a
-	show (List a)        = "List " ++ show a
+	show (Integral a)    = "I   ntegral " ++ show a
+	show (Floating a)    = "F   loating " ++ show a
+	show (Boolean a)     = "    Boolean " ++ show a
+	show (Symbol a)      =      "Symbol " ++ show a
+	show (Quote a)    	 =       "Quote " ++ show a
+	show (List a)               = "List " ++ show a
 	show (Primitive a f) = "Primitive " ++ show a
 	show (Closure a _ _) = "Closure " ++ show a
-	show Nil             = "Nil"
+	show Nil                    = "Nil"
 
 lispObject :: Parser LispObject
 lispObject = lispFloating
@@ -243,7 +244,7 @@ emptyEnv :: IO LispEnvironment
 emptyEnv = newIORef []
 
 isBound :: LispEnvironment -> Name -> IO Bool
-isBound e n = readIORef e >>= return . maybe False (const True) . lookup n
+isBound e n = readIORef e >>= return . isJust . lookup n
 
 getVar :: LispEnvironment -> Name -> IOThrowsError LispObject
 getVar e n  =  do
@@ -262,7 +263,7 @@ bindVar envRef (var, value) = do
 			liftIO $ if alreadyDefined
 				then do
 					env <- readIORef envRef
-					maybe (return ()) (liftIO . (flip writeIORef value)) (lookup var env)
+					maybe (return ()) (liftIO . flip writeIORef value) (lookup var env)
 					return value
 				else liftIO $ do
 					valueRef <- newIORef value
@@ -273,7 +274,7 @@ bindVar envRef (var, value) = do
 bindVars :: LispEnvironment -> [(Name, LispObject)] -> IO LispEnvironment
 bindVars envRef bindings = readIORef envRef >>= extendEnv bindings >>= newIORef
 	where
-		extendEnv bindings env = liftM (++ env) (mapM addBinding bindings)
+		extendEnv bindings env = fmap (++ env) (mapM addBinding bindings)
 		addBinding (var, value) = do { ref <- newIORef value; return (var, ref) }
 
 copyEnv :: LispEnvironment -> IO LispEnvironment
@@ -285,7 +286,7 @@ envToList e = readIORef e >>= mapM g >>= return . List
 	where g (v, k) = do { ref <- readIORef k; return $ List [Symbol v, ref] }
 
 isStdPrim :: Name -> IO Bool
-isStdPrim n = return . maybe False (const True) $ lookup n stdPrims
+isStdPrim n = return . isJust $ lookup n stdPrims
 
 stdPrims :: [(Name, LispObject)]
 stdPrims = map (\(n, f) -> (n, Primitive n f)) [
@@ -302,26 +303,26 @@ stdPrims = map (\(n, f) -> (n, Primitive n f)) [
 		plus l = case l of
 			[Integral a, Integral b] -> Integral (a+b)
 			[Floating a, Floating b] -> Floating (a+b)
-			[Floating a, Integral b] -> Floating (a+(fromIntegral b))
-			[Integral a, Floating b] -> Floating ((fromIntegral a)+b)
+			[Floating a, Integral b] -> Floating (a+fromIntegral b)
+			[Integral a, Floating b] -> Floating (fromIntegral a+b)
 			_                        -> error "(plus a b)"
 		minus l = case l of
 			[Integral a, Integral b] -> Integral (a-b)
 			[Floating a, Floating b] -> Floating (a-b)
-			[Floating a, Integral b] -> Floating (a-(fromIntegral b))
-			[Integral a, Floating b] -> Floating ((fromIntegral a)-b)
+			[Floating a, Integral b] -> Floating (a-fromIntegral b)
+			[Integral a, Floating b] -> Floating (fromIntegral a-b)
 			_                        -> error "(minus a b)"
 		times l = case l of
 			[Integral a, Integral b] -> Integral (a*b)
 			[Floating a, Floating b] -> Floating (a*b)
-			[Floating a, Integral b] -> Floating (a*(fromIntegral b))
-			[Integral a, Floating b] -> Floating ((fromIntegral a)*b)
+			[Floating a, Integral b] -> Floating (a*fromIntegral b)
+			[Integral a, Floating b] -> Floating (fromIntegral a*b)
 			_                        -> error "(times a b)"
 		divides l = case l of
 			[Integral a, Integral b] -> Integral (quot a b)
 			[Floating a, Floating b] -> Floating (a/b)
-			[Floating a, Integral b] -> Floating (a/(fromIntegral b))
-			[Integral a, Floating b] -> Floating ((fromIntegral a)/b)
+			[Floating a, Integral b] -> Floating (a/fromIntegral b)
+			[Integral a, Floating b] -> Floating (fromIntegral a/b)
 			_                        -> error "(divides a b)"
 		equals l = case l of
 			[a, b] -> Boolean $ a == b
@@ -343,7 +344,7 @@ stdPrims = map (\(n, f) -> (n, Primitive n f)) [
 			_                        -> error "(lower_than ord ord)"
 
 basis :: IO LispEnvironment
-basis = emptyEnv >>= (flip bindVars stdPrims)
+basis = emptyEnv >>= flip bindVars stdPrims
 
 -- build and evaluate AST
 buildExpr :: LispObject -> Expr
@@ -364,22 +365,22 @@ buildExpr (List l)	      =
 		[Symbol "lambda", List args, body] 			 -> Lambda (map get_args args) (buildExpr body)
 		[Symbol "define", Symbol n, List args, body] -> DefFun n (map get_args args) (buildExpr body)
 		[Symbol "apply",  Symbol fn, args]  	     -> ApplyOne (buildExpr $ Symbol fn) (buildExpr args)
-		(Symbol fn):args	   			   			 -> Apply (buildExpr $ Symbol fn) (buildExpr <$> args)
+		Symbol fn : args	   			   			 -> Apply (buildExpr $ Symbol fn) (buildExpr <$> args)
 		[]								   			 -> Literal $ List []
 		_								   			 -> error "Poorly formed expression"
 	where get_args a = case a of
 		Symbol s -> s
-		_		 -> error "(lambda (args) body)"
+		_		 -> error "(l       ambda (args) body)"
 
 evalExpr :: Expr -> LispEnvironment -> IOThrowsError LispObject
 evalExpr (Literal (Quote q)) e = return q
 evalExpr (Literal l) e = return l
-evalExpr (Lambda a b) e = return $ Closure { cargs=a, cbody=b, cenv=e }
+evalExpr (Lambda a b) e = return Closure { cargs=a, cbody=b, cenv=e }
 evalExpr (Var "env") e = liftIO $ envToList e
 evalExpr (Var n) e = getVar e n
 evalExpr (If b t f) e = do
 	c <- evalExpr b e
-	(flip evalExpr e) $ if c == Boolean True then t else f
+	flip evalExpr e $ if c == Boolean True then t else f
 
 evalExpr (And a b) e = do
 	r1 <- evalExpr a e
@@ -398,7 +399,7 @@ evalExpr (Apply fn args) e = do
 	as <- mapM (flip evalExpr e) args
 	case f of
 		Primitive _ f -> return $ f as
-		Closure c b e -> (liftIO $ bindVars e $ zip c as) >>= (evalExpr b)
+		Closure c b e -> (liftIO $ bindVars e $ zip c as) >>= evalExpr b
 		_			  -> throwError $ BadExpr "(apply func args)"
 
 evalExpr (ApplyOne fn args) e = do
