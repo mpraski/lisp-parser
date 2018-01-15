@@ -1,11 +1,12 @@
 {-# OPTIONS_GHC -fno-warn-tabs #-}
+{-# LANGUAGE LambdaCase #-}
 
 import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.Except
 import           Data.Char
 import           Data.IORef
-import 			 Data.Maybe
+import           Data.Maybe
 import           System.IO
 
 -- Parser definitions
@@ -35,7 +36,7 @@ instance Monad Parser where
 			Just (a, s') -> parse (f a) s'
 
 instance MonadPlus Parser where
-	mzero       = Parser $ \s -> Nothing
+	mzero       = Parser $ const Nothing
 	a `mplus` b = Parser $ \s ->
 		case parse a s of
 			Nothing      -> parse b s
@@ -49,13 +50,12 @@ run :: Parser a -> String -> a
 run p s =
 	case parse p s of
 		Just (a, _) -> a
-		Nothing     -> error "    Parser did not succeed"
+		Nothing     -> error "Parser did not succeed"
 
 consume :: Parser Char
-consume  = Parser $ \s ->
-	case s of
-		[]     -> Nothing
-		(a:as) -> Just (a, as)
+consume = Parser $ \case
+	[]     -> Nothing
+	(a:as) -> Just (a, as)
 
 satisfy :: (Char -> Bool) -> Parser Char
 satisfy f = consume >>= (\c -> if f c then return c else empty)
@@ -190,15 +190,15 @@ instance Ord LispObject where
 	Nil           `compare` Nil           = EQ
 
 instance Show LispObject where
-	show (Integral a)    = "I   ntegral " ++ show a
-	show (Floating a)    = "F   loating " ++ show a
-	show (Boolean a)     = "    Boolean " ++ show a
-	show (Symbol a)      =      "Symbol " ++ show a
-	show (Quote a)    	 =       "Quote " ++ show a
-	show (List a)               = "List " ++ show a
-	show (Primitive a f) = "Primitive " ++ show a
-	show (Closure a _ _) = "Closure " ++ show a
-	show Nil                    = "Nil"
+	show (Integral a)    = "Integral" ++ show a
+	show (Floating a)    = "Floating" ++ show a
+	show (Boolean a)     = "Boolean" ++ show a
+	show (Symbol a)      = "Symbol" ++ show a
+	show (Quote a)    	 = "Quote" ++ show a
+	show (List a)        = "List" ++ show a
+	show (Primitive a f) = "Primitive" ++ show a
+	show (Closure a _ _) = "Closure" ++ show a
+	show Nil             = "Nil"
 
 lispObject :: Parser LispObject
 lispObject = lispFloating
@@ -244,7 +244,7 @@ emptyEnv :: IO LispEnvironment
 emptyEnv = newIORef []
 
 isBound :: LispEnvironment -> Name -> IO Bool
-isBound e n = readIORef e >>= return . isJust . lookup n
+isBound e n = readIORef e >>=  return . isJust . lookup n
 
 getVar :: LispEnvironment -> Name -> IOThrowsError LispObject
 getVar e n  =  do
@@ -263,11 +263,11 @@ bindVar envRef (var, value) = do
 			liftIO $ if alreadyDefined
 				then do
 					env <- readIORef envRef
-					maybe (return ()) (liftIO . flip writeIORef value) (lookup var env)
+					maybe empty (flip writeIORef value) (lookup var env)
 					return value
-				else liftIO $ do
-					valueRef <- newIORef value
+				else do
 					env <- readIORef envRef
+					valueRef <- newIORef value
 					writeIORef envRef ((var, valueRef) : env)
 					return value
 
@@ -370,7 +370,7 @@ buildExpr (List l)	      =
 		_								   			 -> error "Poorly formed expression"
 	where get_args a = case a of
 		Symbol s -> s
-		_		 -> error "(l       ambda (args) body)"
+		_		 -> error "(lambda (args) body)"
 
 evalExpr :: Expr -> LispEnvironment -> IOThrowsError LispObject
 evalExpr (Literal (Quote q)) e = return q
@@ -399,7 +399,7 @@ evalExpr (Apply fn args) e = do
 	as <- mapM (flip evalExpr e) args
 	case f of
 		Primitive _ f -> return $ f as
-		Closure c b e -> (liftIO $ bindVars e $ zip c as) >>= evalExpr b
+		Closure c b e -> (liftIO . bindVars e $ zip c as) >>= evalExpr b
 		_			  -> throwError $ BadExpr "(apply func args)"
 
 evalExpr (ApplyOne fn args) e = do
@@ -408,8 +408,8 @@ evalExpr (ApplyOne fn args) e = do
 	case (f, as) of
 		(Primitive _ f, List ass) -> return $ f ass
 		(Primitive _ f, o) 		  -> return $ f [o]
-		(Closure c b e, List ass) -> (liftIO $ bindVars e $ zip c ass) >>= evalExpr b
-		(Closure c b e, o) 		  -> (liftIO $ bindVars e $ zip c [o]) >>= evalExpr b
+		(Closure c b e, List ass) -> (liftIO . bindVars e $ zip c ass) >>= evalExpr b
+		(Closure c b e, o) 		  -> (liftIO . bindVars e $ zip c [o]) >>= evalExpr b
 		_			  			  -> throwError $ BadExpr "(apply func args)"
 
 evalExpr (DefVal n v) e = evalExpr v e >>= (\va -> bindVar e (n, va))
@@ -435,10 +435,10 @@ runRepl = basis >>= until_ (== ":q") (readPrompt "> ") . evalAndPrint
 
 until_ :: Monad m => (a -> Bool) -> m a -> (a -> m ()) -> m ()
 until_ pred prompt action = do
-  result <- prompt
-  if pred result
-     then return ()
-     else action result >> until_ pred prompt action
+	result <- prompt
+	if pred result
+    	then return ()
+    	else action result >> until_ pred prompt action
 
 runIOThrows :: IOThrowsError String -> IO String
 runIOThrows action = runExceptT (trapError action) >>= return . extractValue
