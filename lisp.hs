@@ -190,14 +190,14 @@ instance Ord LispObject where
 	Nil           `compare` Nil           = EQ
 
 instance Show LispObject where
-	show (Integral a)    = "Integral" ++ show a
-	show (Floating a)    = "Floating" ++ show a
-	show (Boolean a)     = "Boolean" ++ show a
-	show (Symbol a)      = "Symbol" ++ show a
-	show (Quote a)    	 = "Quote" ++ show a
-	show (List a)        = "List" ++ show a
-	show (Primitive a f) = "Primitive" ++ show a
-	show (Closure a _ _) = "Closure" ++ show a
+	show (Integral a)    = "Integral " ++ show a
+	show (Floating a)    = "Floating " ++ show a
+	show (Boolean a)     = "Boolean " ++ show a
+	show (Symbol a)      = "Symbol " ++ show a
+	show (Quote a)    	 = "Quote " ++ show a
+	show (List a)        = "List " ++ show a
+	show (Primitive a f) = "Primitive " ++ show a
+	show (Closure a _ _) = "Closure " ++ show a
 	show Nil             = "Nil"
 
 lispObject :: Parser LispObject
