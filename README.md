@@ -1,3 +1,7 @@
 # lisp-parser
 
-Lisp parser written in Haskell for learning purposes.
+Lisp parser & interpreter written in Haskell. 
+
+## usage
+
+Load `Repl.hs` and call `repl` to open interactive shell.
