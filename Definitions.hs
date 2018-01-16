@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
-module Definitions where
+module Definitions (module Definitions, module Parser) where
 
 import Data.IORef
 import Data.Maybe

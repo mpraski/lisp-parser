@@ -5,8 +5,6 @@ module Repl where
 import Control.Monad.Except
 import System.IO
 
-import Parser
-import Definitions
 import Analyser
 
 -- Define the repl function
