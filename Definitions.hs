@@ -191,7 +191,11 @@ stdPrims = map (\(n, f) -> (n, Primitive n f)) [
 			("*", times),
 			("/", divides),
 			("<", lower_than),
-			(">", greater_than)
+			(">", greater_than),
+			("cons", cons),
+			("atom?", atom),
+			("car", car),
+			("cdr", cdr)
 		]
 	where
 		plus l = case l of
@@ -220,8 +224,10 @@ stdPrims = map (\(n, f) -> (n, Primitive n f)) [
 			_                        -> error "(divides a b)"
 		equals l = case l of
 			[a, b] -> Boolean $ a == b
+			_      -> error "(eq bool bool)"
 		not_equals l = case l of
 			[a, b] -> Boolean $ a /= b
+			_      -> error "(neq bool bool)"
 		lower_than l = case l of
 			[Integral a, Integral b] -> Boolean $ a < b
 			[Floating a, Floating b] -> Boolean $ a < b
@@ -236,6 +242,20 @@ stdPrims = map (\(n, f) -> (n, Primitive n f)) [
 			[List a, List b]         -> Boolean $ a > b
 			[Quote a, Quote b]       -> Boolean $ a > b
 			_                        -> error "(lower_than ord ord)"
+		cons l = case l of
+			[a, List b] -> List $ a : b
+			[a, b]      -> List [a, b]
+			_           -> error "(cons atom list|atom)"
+		atom l = case l of
+			[List []] -> Boolean True
+			[List _]  -> Boolean False
+			_		  -> Boolean True
+		car l = case l of
+			[List (a:_)] -> a
+			_          -> error "(car list)"
+		cdr l = case l of
+			[List (_:as)] -> List as
+			_           -> error "(cdr list)"
 
 basis :: IO LispEnvironment
 basis = emptyEnv >>= flip bindVars stdPrims

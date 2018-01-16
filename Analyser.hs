@@ -3,7 +3,6 @@
 module Analyser (module Analyser, module Definitions) where
 
 import           Control.Monad.Except
-
 import           Definitions
 
 -- build and evaluate AST
