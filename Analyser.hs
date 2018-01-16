@@ -13,10 +13,10 @@ buildExpr (Closure _ _ _) = error "Not expected"
 buildExpr (Integral i)    = Literal (Integral i)
 buildExpr (Floating f)    = Literal (Floating f)
 buildExpr (Boolean b)     = Literal (Boolean b)
-buildExpr (Quote q)		  = Literal (Quote q)
-buildExpr Nil			  = Literal Nil
+buildExpr (Quote q)       = Literal (Quote q)
+buildExpr Nil             = Literal Nil
 buildExpr (Symbol s)      = Var s
-buildExpr (List l)	      =
+buildExpr (List l)        =
 	case l of
 		[Symbol "if", 	  c, t, f]         			 -> If (buildExpr c) (buildExpr t) (buildExpr f)
 		[Symbol "and", 	  a, b]		       			 -> And (buildExpr a) (buildExpr b)
