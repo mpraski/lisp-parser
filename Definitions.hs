@@ -2,12 +2,11 @@
 
 module Definitions (module Definitions, module Parser) where
 
-import Data.IORef
-import Data.Maybe
-import Control.Monad.Except
-import Control.Applicative
-
-import Parser
+import           Control.Applicative
+import           Control.Monad.Except
+import           Data.IORef
+import           Data.Maybe
+import           Parser
 
 -- Lisp specific definitions
 type LispFunc = [LispObject] -> LispObject
@@ -71,7 +70,7 @@ instance Eq LispObject where
 	Primitive a _ == Primitive b _ = a == b
 	Closure a b _ == Closure c d _ = a == c && b == d
 	Nil           == Nil           = True
-	_			  == _			   = False
+	_             == _             = False
 
 instance Ord LispObject where
 	Integral a    `compare` Integral b    = a `compare` b
@@ -81,14 +80,14 @@ instance Ord LispObject where
 	List a        `compare` List b        = a `compare` b
 	Primitive a _ `compare` Primitive b _ = a `compare` b
 	Nil           `compare` Nil           = EQ
-	_			  `compare` _			  = EQ
+	_             `compare` _             = EQ
 
 instance Show LispObject where
 	show (Integral a)    = "Integral " ++ show a
 	show (Floating a)    = "Floating " ++ show a
 	show (Boolean a)     = "Boolean " ++ show a
 	show (Symbol a)      = "Symbol " ++ show a
-	show (Quote a)    	 = "Quote " ++ show a
+	show (Quote a)       = "Quote " ++ show a
 	show (List a)        = "List " ++ show a
 	show (Primitive a _) = "Primitive " ++ show a
 	show (Closure a _ _) = "Closure " ++ show a
@@ -226,16 +225,16 @@ stdPrims = map (\(n, f) -> (n, Primitive n f)) [
 		lower_than l = case l of
 			[Integral a, Integral b] -> Boolean $ a < b
 			[Floating a, Floating b] -> Boolean $ a < b
-			[Symbol a, Symbol b] 	 -> Boolean $ a < b
-			[List a, List b] 		 -> Boolean $ a < b
-			[Quote a, Quote b] 		 -> Boolean $ a < b
+			[Symbol a, Symbol b]     -> Boolean $ a < b
+			[List a, List b]         -> Boolean $ a < b
+			[Quote a, Quote b]       -> Boolean $ a < b
 			_                        -> error "(lower_than ord ord)"
 		greater_than l = case l of
 			[Integral a, Integral b] -> Boolean $ a > b
 			[Floating a, Floating b] -> Boolean $ a > b
-			[Symbol a, Symbol b] 	 -> Boolean $ a > b
-			[List a, List b] 		 -> Boolean $ a > b
-			[Quote a, Quote b] 		 -> Boolean $ a > b
+			[Symbol a, Symbol b]     -> Boolean $ a > b
+			[List a, List b]         -> Boolean $ a > b
+			[Quote a, Quote b]       -> Boolean $ a > b
 			_                        -> error "(lower_than ord ord)"
 
 basis :: IO LispEnvironment

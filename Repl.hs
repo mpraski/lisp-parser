@@ -2,10 +2,9 @@
 
 module Repl where
 
-import Control.Monad.Except
-import System.IO
-
-import Analyser
+import           Control.Monad.Except
+import           System.IO
+import           Analyser
 
 -- Define the repl function
 repl :: IO ()
