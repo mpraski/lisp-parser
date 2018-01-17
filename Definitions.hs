@@ -10,6 +10,8 @@ import           Parser
 
 -- Lisp specific definitions
 type LispFunc = [LispObject] -> LispObject
+type IOLispFunc = [LispObject] -> IOThrowsError LispObject
+
 type Name = String
 
 data LispObject =
@@ -17,8 +19,10 @@ data LispObject =
 	| Floating Double
 	| Boolean Bool
 	| Symbol Name
+	| String String
 	| List [LispObject]
 	| Primitive Name LispFunc
+	| IOPrimitive Name IOLispFunc
 	| Quote Value
 	| Closure {
 		cargs :: [Name],
@@ -83,15 +87,17 @@ instance Ord LispObject where
 	_             `compare` _             = EQ
 
 instance Show LispObject where
-	show (Integral a)    = "Integral " ++ show a
-	show (Floating a)    = "Floating " ++ show a
-	show (Boolean a)     = "Boolean " ++ show a
-	show (Symbol a)      = "Symbol " ++ show a
-	show (Quote a)       = "Quote " ++ show a
-	show (List a)        = "List " ++ show a
-	show (Primitive a _) = "Primitive " ++ show a
-	show (Closure a _ _) = "Closure " ++ show a
-	show Nil             = "Nil"
+	show (Integral a)      = "Integral " ++ show a
+	show (Floating a)      = "Floating " ++ show a
+	show (Boolean a)       = "Boolean " ++ show a
+	show (Symbol a)        = "Symbol " ++ show a
+	show (String a)        = "String " ++ show a
+	show (Quote a)         = "Quote " ++ show a
+	show (List a)          = "List " ++ show a
+	show (Primitive a _)   = "Primitive " ++ show a
+	show (IOPrimitive a _) = "IOPrimitive " ++ show a
+	show (Closure a _ _)   = "Closure " ++ show a
+	show Nil               = "Nil"
 
 -- Parsers for LispObject
 lispObject :: Parser LispObject
@@ -100,6 +106,7 @@ lispObject = lispFloating
 	<|> lispBoolean
 	<|> lispNil
 	<|> lispList
+	<|> lispString
 	<|> lispSymbol
 	<|> lispQuote
 
@@ -111,6 +118,13 @@ lispFloating = do { a <- floating; spaces; return $ Floating a }
 
 lispSymbol :: Parser LispObject
 lispSymbol = do { a <- token (some symbol); return $ Symbol a }
+
+lispString :: Parser LispObject
+lispString = do
+	reserved "\""
+	a <- some symbol
+	reserved "\""
+	return $ String a
 
 lispQuote :: Parser LispObject
 lispQuote = do
@@ -180,7 +194,7 @@ envToList e = List <$> (readIORef e >>= mapM g)
 	where g (v, k) = do { ref <- readIORef k; return $ List [Symbol v, ref] }
 
 isStdPrim :: Name -> IO Bool
-isStdPrim n = return . isJust $ lookup n stdPrims
+isStdPrim n = return . isJust $ lookup n (stdPrims ++ stdIOPrims)
 
 stdPrims :: [(Name, LispObject)]
 stdPrims = map (\(n, f) -> (n, Primitive n f)) [
@@ -257,5 +271,14 @@ stdPrims = map (\(n, f) -> (n, Primitive n f)) [
 			[List (_:as)] -> List as
 			_             -> error "(cdr list)"
 
+stdIOPrims :: [(Name, LispObject)]
+stdIOPrims = map (\(n, f) -> (n, IOPrimitive n f)) [
+			("read", read_file)
+		]
+	where
+		read_file l = case l of
+			[String path] -> String <$> liftIO (readFile path)
+			_             -> error "(read path)"
+
 basis :: IO LispEnvironment
-basis = emptyEnv >>= flip bindVars stdPrims
+basis = emptyEnv >>= flip bindVars (stdPrims ++ stdIOPrims)

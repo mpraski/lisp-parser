@@ -73,7 +73,7 @@ upper :: Parser Char
 upper = chars ['A'..'Z']
 
 symbol :: Parser Char
-symbol = chars $ ['a'..'z'] ++ ['A'..'Z'] ++ ['*','/','>','<','=','?','!','-','+']
+symbol = chars $ ['a'..'z'] ++ ['A'..'Z'] ++ ['*','/','>','<','=','?','!','-','+','.']
 
 whitespace :: Parser Char
 whitespace = chars [' ', '\n', '\t']
