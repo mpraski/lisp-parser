@@ -47,7 +47,7 @@ run :: Parser a -> String -> a
 run p s =
 	case parse p s of
 		Just (a, _) -> a
-		Nothing     -> error "    Parser did not succeed"
+		Nothing     -> error "Parser did not succeed"
 
 consume :: Parser Char
 consume = Parser $ \case

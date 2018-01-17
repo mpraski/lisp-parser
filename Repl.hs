@@ -4,7 +4,7 @@ module Repl where
 
 import           Control.Monad.Except
 import           System.IO
-import           Analyser
+import           Evaluator
 
 -- Define the repl function
 repl :: IO ()

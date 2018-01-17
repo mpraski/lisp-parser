@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
-module Analyser (module Analyser, module Definitions) where
+module Evaluator (module Evaluator, module Definitions) where
 
 import           Control.Monad.Except
 import           Definitions

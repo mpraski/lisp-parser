@@ -249,13 +249,13 @@ stdPrims = map (\(n, f) -> (n, Primitive n f)) [
 		atom l = case l of
 			[List []] -> Boolean True
 			[List _]  -> Boolean False
-			_		  -> Boolean True
+			_         -> Boolean True
 		car l = case l of
 			[List (a:_)] -> a
-			_          -> error "(car list)"
+			_            -> error "(car list)"
 		cdr l = case l of
 			[List (_:as)] -> List as
-			_           -> error "(cdr list)"
+			_             -> error "(cdr list)"
 
 basis :: IO LispEnvironment
 basis = emptyEnv >>= flip bindVars stdPrims
