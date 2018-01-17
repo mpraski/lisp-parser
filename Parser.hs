@@ -1,10 +1,11 @@
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 {-# LANGUAGE LambdaCase #-}
 
-module Parser where
+module Parser (module Parser, module Definitions) where
 
 import           Control.Applicative
 import           Control.Monad
+import           Definitions
 
 -- Parser definitions
 newtype Parser a = Parser { parse :: String -> Maybe (a, String) }
@@ -112,3 +113,49 @@ token p = do { a <- p; spaces; return a }
 
 reserved :: String -> Parser String
 reserved s = token (string s)
+
+-- Parsers for LispObject
+lispObject :: Parser LispObject
+lispObject = lispFloating
+	<|> lispIntegral
+	<|> lispBoolean
+	<|> lispNil
+	<|> lispList
+	<|> lispString
+	<|> lispSymbol
+	<|> lispQuote
+
+lispIntegral :: Parser LispObject
+lispIntegral = do { a <- integral; spaces; return $ Integral a }
+
+lispFloating :: Parser LispObject
+lispFloating = do { a <- floating; spaces; return $ Floating a }
+
+lispSymbol :: Parser LispObject
+lispSymbol = do { a <- token (some symbol); return $ Symbol a }
+
+lispString :: Parser LispObject
+lispString = do
+	reserved "\""
+	a <- some symbol
+	reserved "\""
+	return $ String a
+
+lispQuote :: Parser LispObject
+lispQuote = do
+	reserved "'"
+	a <- lispObject
+	return $ Quote a
+
+lispBoolean :: Parser LispObject
+lispBoolean = do { a <- boolean; spaces; return $ Boolean a }
+
+lispNil :: Parser LispObject
+lispNil = do { reserved "nil"; return Nil }
+
+lispList :: Parser LispObject
+lispList = do
+	reserved "("
+	a <- many lispObject
+	reserved ")"
+	return $ List a
