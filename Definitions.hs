@@ -8,7 +8,7 @@ import           Control.Monad.Except
 -- Lisp specific definitions
 type LispEnvironment = IORef [(Name, IORef LispObject)]
 
-type LispFunc = [LispObject] -> LispObject
+type LispFunc = [LispObject] -> IOThrowsError LispObject
 type IOLispFunc = [LispObject] -> LispEnvironment -> IOThrowsError LispObject
 
 type Name = String
@@ -49,6 +49,7 @@ data LispError =
 	Default String
 	| UnboundVar String Name
 	| ReservedVar String Name
+	| BadArg String
 	| BadExpr String deriving (Eq, Show)
 
 type ThrowsError = Either LispError
@@ -87,14 +88,14 @@ instance Ord LispObject where
 	_             `compare` _             = EQ
 
 instance Show LispObject where
-	show (Integral a)      = "Integral " ++ show a
-	show (Floating a)      = "Floating " ++ show a
-	show (Boolean a)       = "Boolean " ++ show a
-	show (Symbol a)        = "Symbol " ++ show a
-	show (String a)        = "String " ++ show a
-	show (Quote a)         = "Quote " ++ show a
-	show (List a)          = "List " ++ show a
-	show (Primitive a _)   = "Primitive " ++ show a
-	show (IOPrimitive a _) = "IOPrimitive " ++ show a
-	show (Closure a _ _)   = "Closure " ++ show a
-	show Nil               = "Nil"
+	show (Integral a)      = show a
+	show (Floating a)      = show a
+	show (Boolean a)       = show a
+	show (Symbol a)        = show a
+	show (String a)        = show a
+	show (Quote a)         = "'" ++ show a
+	show (List a)          = show a
+	show (Primitive a _)   = "prim<" ++ show a ++ ">"
+	show (IOPrimitive a _) = "io_prim<" ++ show a ++ ">"
+	show (Closure a _ _)   = "closure<" ++ show a ++ ">"
+	show Nil               = "nil"

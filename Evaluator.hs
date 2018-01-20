@@ -4,7 +4,6 @@ module Evaluator (module Evaluator, module Parser) where
 
 import           Data.Maybe
 import           Data.IORef
-import           Control.Applicative
 import           Control.Monad.Except
 import           Parser
 
@@ -59,8 +58,8 @@ isStdPrim n = return . isJust $ lookup n (stdPrims ++ stdIOPrims)
 
 stdPrims :: [(Name, LispObject)]
 stdPrims = map (\(n, f) -> (n, Primitive n f)) [
-			("eq", equals),
-			("neq", not_equals),
+			("eq?", equals),
+			("neq?", not_equals),
 			("+", plus),
 			("-", minus),
 			("*", times),
@@ -74,81 +73,86 @@ stdPrims = map (\(n, f) -> (n, Primitive n f)) [
 		]
 	where
 		plus l = case l of
-			[Integral a, Integral b] -> Integral (a+b)
-			[Floating a, Floating b] -> Floating (a+b)
-			[Floating a, Integral b] -> Floating (a+fromIntegral b)
-			[Integral a, Floating b] -> Floating (fromIntegral a+b)
-			_                        -> error "(plus a b)"
+			[Integral a, Integral b] -> return $ Integral (a+b)
+			[Floating a, Floating b] -> return $ Floating (a+b)
+			[Floating a, Integral b] -> return $ Floating (a+fromIntegral b)
+			[Integral a, Floating b] -> return $ Floating (fromIntegral a+b)
+			_                        -> liftThrows $ throwError (BadArg "(plus num num)")
 		minus l = case l of
-			[Integral a, Integral b] -> Integral (a-b)
-			[Floating a, Floating b] -> Floating (a-b)
-			[Floating a, Integral b] -> Floating (a-fromIntegral b)
-			[Integral a, Floating b] -> Floating (fromIntegral a-b)
-			_                        -> error "(minus a b)"
+			[Integral a, Integral b] -> return $ Integral (a-b)
+			[Floating a, Floating b] -> return $ Floating (a-b)
+			[Floating a, Integral b] -> return $ Floating (a-fromIntegral b)
+			[Integral a, Floating b] -> return $ Floating (fromIntegral a-b)
+			_                        -> liftThrows $ throwError (BadArg "(minus num num)")
 		times l = case l of
-			[Integral a, Integral b] -> Integral (a*b)
-			[Floating a, Floating b] -> Floating (a*b)
-			[Floating a, Integral b] -> Floating (a*fromIntegral b)
-			[Integral a, Floating b] -> Floating (fromIntegral a*b)
-			_                        -> error "(times a b)"
+			[Integral a, Integral b] -> return $ Integral (a*b)
+			[Floating a, Floating b] -> return $ Floating (a*b)
+			[Floating a, Integral b] -> return $ Floating (a*fromIntegral b)
+			[Integral a, Floating b] -> return $ Floating (fromIntegral a*b)
+			_                        -> liftThrows $ throwError (BadArg "(times num num)")
 		divides l = case l of
-			[Integral a, Integral b] -> Integral (quot a b)
-			[Floating a, Floating b] -> Floating (a/b)
-			[Floating a, Integral b] -> Floating (a/fromIntegral b)
-			[Integral a, Floating b] -> Floating (fromIntegral a/b)
-			_                        -> error "(divides a b)"
+			[Integral a, Integral b] -> return $ Integral (quot a b)
+			[Floating a, Floating b] -> return $ Floating (a/b)
+			[Floating a, Integral b] -> return $ Floating (a/fromIntegral b)
+			[Integral a, Floating b] -> return $ Floating (fromIntegral a/b)
+			_                        -> liftThrows $ throwError (BadArg "(divides num num)")
 		equals l = case l of
-			[a, b] -> Boolean $ a == b
-			_      -> error "(eq bool bool)"
+			[a, b] -> return $ Boolean $ a == b
+			_      -> liftThrows $ throwError (BadArg "(eq bool bool)")
 		not_equals l = case l of
-			[a, b] -> Boolean $ a /= b
-			_      -> error "(neq bool bool)"
+			[a, b] -> return $ Boolean $ a /= b
+			_      -> liftThrows $ throwError (BadArg "(neq bool bool)")
 		lower_than l = case l of
-			[Integral a, Integral b] -> Boolean $ a < b
-			[Floating a, Floating b] -> Boolean $ a < b
-			[Symbol a, Symbol b]     -> Boolean $ a < b
-			[List a, List b]         -> Boolean $ a < b
-			[Quote a, Quote b]       -> Boolean $ a < b
-			_                        -> error "(lower_than ord ord)"
+			[Integral a, Integral b] -> return $ Boolean $ a < b
+			[Floating a, Floating b] -> return $ Boolean $ a < b
+			[Symbol a, Symbol b]     -> return $ Boolean $ a < b
+			[List a, List b]         -> return $ Boolean $ a < b
+			[Quote a, Quote b]       -> return $ Boolean $ a < b
+			_                        -> liftThrows $ throwError (BadArg "(lower_than ord ord)")
 		greater_than l = case l of
-			[Integral a, Integral b] -> Boolean $ a > b
-			[Floating a, Floating b] -> Boolean $ a > b
-			[Symbol a, Symbol b]     -> Boolean $ a > b
-			[List a, List b]         -> Boolean $ a > b
-			[Quote a, Quote b]       -> Boolean $ a > b
-			_                        -> error "(lower_than ord ord)"
+			[Integral a, Integral b] -> return $ Boolean $ a > b
+			[Floating a, Floating b] -> return $ Boolean $ a > b
+			[Symbol a, Symbol b]     -> return $ Boolean $ a > b
+			[List a, List b]         -> return $ Boolean $ a > b
+			[Quote a, Quote b]       -> return $ Boolean $ a > b
+			_                        -> liftThrows $ throwError (BadArg "(greater_than ord ord)")
 		cons l = case l of
-			[a, List b] -> List $ a : b
-			[a, b]      -> List [a, b]
-			_           -> error "(cons atom list|atom)"
+			[a, List b] -> return $ List $ a : b
+			[a, b]      -> return $ List [a, b]
+			_           -> liftThrows $ throwError (BadArg "(cons atom list|atom)")
 		atom l = case l of
-			[List []] -> Boolean True
-			[List _]  -> Boolean False
-			_         -> Boolean True
+			[List []] -> return $ Boolean True
+			[List _]  -> return $ Boolean False
+			_         -> return $ Boolean True
 		car l = case l of
-			[List (a:_)] -> a
-			_            -> error "(car list)"
+			[List (a:_)] -> return a
+			_            -> liftThrows $ throwError (BadArg "(car list)")
 		cdr l = case l of
-			[List (_:as)] -> List as
-			_             -> error "(cdr list)"
+			[List (_:as)] -> return $  List as
+			_             -> liftThrows $ throwError (BadArg "(cdr list)")
 
 stdIOPrims :: [(Name, LispObject)]
 stdIOPrims = map (\(n, f) -> (n, IOPrimitive n f)) [
-			("read", read_file),
-			("load", load)
+			(":read", read_file),
+			(":write", write_file),
+			(":load", load)
 		]
 	where
 		read_file l _ = case l of
 			[String path] -> String <$> liftIO (readFile path)
-			_             -> error "(read path)"
+			_             -> liftThrows $ throwError (BadArg "Expected argument of type String")
+		write_file l _ = case l of
+			[String path, o] -> liftIO (writeFile path (show o)) >> return (String "success")		
+			_                -> liftThrows $ throwError (BadArg "Expected argument of type String")
 		load l e = case l of 
 			[String path] -> do
 				contents <- get_string <$> read_file [String path] e
-				evalExpr (buildExpr $ run lispObject contents) e
-				return $ String "success"
-			_             -> error "(load path)"
-		get_string (String s) = s
-		get_string _          = error "content is not a string"
+				case contents of
+					Just s  -> (evalExpr . buildExpr $ run lispObject s) e >> return (String "success")
+					Nothing -> throwError $ Default "Contents is not a string"
+			_             -> throwError $ BadArg "Expected argument of type String"
+		get_string (String s) = Just s
+		get_string _          = Nothing
 
 basis :: IO LispEnvironment
 basis = emptyEnv >>= flip bindVars (stdPrims ++ stdIOPrims)
@@ -207,7 +211,7 @@ evalExpr (Apply fn args) e = do
 	fun <- evalExpr fn e
 	as <- mapM (flip evalExpr e) args
 	case fun of
-		Primitive _ f   -> return $ f as
+		Primitive _ f   -> f as
 		IOPrimitive _ f -> f as e
 		Closure c b env -> (liftIO . bindVars env $ zip c as) >>= evalExpr b
 		_               -> throwError $ BadExpr "(apply func args)"
@@ -216,8 +220,8 @@ evalExpr (ApplyOne fn args) e = do
 	fun <- evalExpr fn e
 	as <- evalExpr args e
 	case (fun, as) of
-		(Primitive _ f, List ass)   -> return $ f ass
-		(Primitive _ f, o)          -> return $ f [o]
+		(Primitive _ f, List ass)   -> f ass
+		(Primitive _ f, o)          -> f [o]
 		(IOPrimitive _ f, List ass) -> f ass e
 		(IOPrimitive _ f, o)        -> f [o] e
 		(Closure c b env, List ass) -> (liftIO . bindVars env $ zip c ass) >>= evalExpr b
